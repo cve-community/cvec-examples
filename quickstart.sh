@@ -40,6 +40,7 @@ interactive() { [ "${CVEC_NONINTERACTIVE:-0}" != 1 ] && [ -r /dev/tty ]; }
 ask() {
   local var=$1 q=$2 def=${3:-} secret=${4:-} ans=""
   if [ -n "${!var:-}" ]; then
+    printf -v "$var" '%s' "$(clean "${!var}")"
     if [ -n "$secret" ]; then ok "$q (provided)"; else ok "$q ${!var}"; fi
     return
   fi
@@ -53,7 +54,17 @@ ask() {
     fi
     [ -n "$ans" ] || warn "this one's required"
   done
-  printf -v "$var" '%s' "$ans"
+  printf -v "$var" '%s' "$(clean "$ans")"
+}
+
+# Pasted answers can carry terminal paste markers (ESC[200~ … ESC[201~), a
+# carriage return or stray spaces; none of them belong in an address,
+# username or password.
+clean() {
+  local v=$1 esc=$'\033'
+  v=${v//"${esc}[200~"/}; v=${v//"${esc}[201~"/}; v=${v//$'\r'/}
+  v=${v#"${v%%[![:space:]]*}"}; v=${v%"${v##*[![:space:]]}"}
+  printf '%s' "$v"
 }
 
 # choose VAR "Question" default opt1 opt2 ...
@@ -132,12 +143,15 @@ ask CVEC_BROKERS "Broker address (host:port):"
 ask CVEC_USERNAME "Username:"
 ask CVEC_PASSWORD "Password (typing is hidden):" "" secret
 CVEC_SSL="${CVEC_SSL:-false}"
+# The script passes the start date itself (first run only); never via env.
+export -n CVEC_SINCE 2>/dev/null || true
 export CVEC_BROKERS CVEC_USERNAME CVEC_PASSWORD CVEC_SSL
 note "Testing the connection..."
 if out=$(cd "$APP" && node --disable-warning=TimeoutNegativeWarning node-consumer.ts --check 2>&1); then
   ok "${out#OK: }"
 else
-  printf '%s\n' "$out" | grep -E '^\[cvec\]|^OK' | sed 's/^/    /' >&2
+  printf '%s\n' "$out" | tail -5 | sed 's/^/    /' >&2
+  note "(you entered username \"$CVEC_USERNAME\" and a ${#CVEC_PASSWORD}-character password)"
   die "Couldn't connect. Check the address/username/password with whoever gave them to you, then re-run."
 fi
 
