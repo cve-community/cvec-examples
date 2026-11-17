@@ -1,0 +1,18 @@
+{
+  "name": "cvec-node-consumer",
+  "private": true,
+  "type": "module",
+  "description": "Example consumer for cve-streams: tail every CVE change",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --disable-warning=TimeoutNegativeWarning node-consumer.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "kafkajs": "2.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}
