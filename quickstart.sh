@@ -11,7 +11,8 @@
 #   CVEC_USERNAME  your username
 #   CVEC_PASSWORD  your password (prefer typing it when asked)
 #   CVEC_MODE      stdout | files
-#   CVEC_OUT       directory for files mode            (default: ./cves)
+#   CVEC_OUT       directory for files mode, relative to where you run this
+#                  (default: ~/Downloads/cvec-cves)
 #   CVEC_SINCE     start date, ISO; "beginning" for all  (default: beginning)
 #   CVEC_TOPIC     cve.changes | cve.state             (default: cve.changes)
 #   CVEC_DIR       where to put the examples repo      (default: ~/cvec-examples)
@@ -23,6 +24,9 @@ set -euo pipefail
 REPO="${CVEC_REPO:-https://github.com/cve-community/cvec-examples.git}"
 DIR="${CVEC_DIR:-$HOME/cvec-examples}"
 MIN_NODE="22.18.0"
+# Relative paths you type (e.g. the output directory) mean "from where you ran
+# this", even though the script later works inside the examples repo.
+CALLER_DIR=$PWD
 
 # --- terminal helpers -----------------------------------------------------------
 # Under `curl | bash`, stdin is the script itself, so prompts read the terminal.
@@ -161,7 +165,14 @@ say "stdout: one JSON line per change, printed to your terminal (pipe it anywher
 say "files:  one file per CVE, <dir>/<year>/<CVE-ID>.json, always the latest version."
 choose CVEC_MODE "Output:" stdout stdout files
 if [ "$CVEC_MODE" = files ]; then
-  ask CVEC_OUT "Directory:" "./cves"
+  ask CVEC_OUT "Directory (relative paths are from $CALLER_DIR):" "~/Downloads/cvec-cves"
+  case "$CVEC_OUT" in
+    "~") CVEC_OUT=$HOME ;;
+    "~/"*) CVEC_OUT="$HOME/${CVEC_OUT#"~/"}" ;;
+    /*) ;;
+    *) CVEC_OUT="$CALLER_DIR/${CVEC_OUT#./}" ;;
+  esac
+  ok "files will go to $CVEC_OUT"
 fi
 say ""
 say "Where to start: 'beginning' replays everything the feed has; a date like"

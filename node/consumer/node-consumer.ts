@@ -7,13 +7,14 @@
 //
 //   npm start                                  # stdout, from where your group left off
 //   npm start -- --since 2026-11-16            # (re)start from a date
-//   npm start -- --out ./cves                  # mirror records into ./cves
+//   npm start -- --out ~/Downloads/cvec-cves   # mirror records into that folder
 //
 // Connection settings come from the environment (or a .env file; see
 // .env.example). Run with --help for every option.
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { Kafka, logLevel } from "kafkajs";
 
@@ -69,7 +70,12 @@ const ssl = (process.env.CVEC_SSL ?? "false") === "true";
 const mechanism = process.env.CVEC_MECHANISM === "scram-sha-512" ? "scram-sha-512" : "scram-sha-256";
 const topic = args.topic ?? process.env.CVEC_TOPIC ?? "cve.changes";
 const groupId = args.group ?? process.env.CVEC_GROUP ?? `${username}.example`;
-const outDir = args.out ?? process.env.CVEC_OUT;
+// Relative --out paths are from the directory you ran the command in: npm
+// changes into this package's folder first but records the original in INIT_CWD.
+const outRaw = args.out ?? process.env.CVEC_OUT;
+const outDir = outRaw
+  ? resolve(process.env.INIT_CWD ?? process.cwd(), outRaw.replace(/^~(?=\/|$)/, homedir()))
+  : undefined;
 const sinceRaw = args.since ?? process.env.CVEC_SINCE;
 const since = sinceRaw ? new Date(sinceRaw) : undefined;
 if (since && Number.isNaN(since.getTime())) {

@@ -14,7 +14,7 @@ Useful variations:
 
 ```sh
 npm start -- --since 2026-11-16          # start from a date (re-reads from there)
-npm start -- --out ./cves                # keep ./cves/<year>/<CVE-ID>.json current
+npm start -- --out ~/Downloads/cvec-cves  # keep <dir>/<year>/<CVE-ID>.json current
 npm start -- --topic cve.state           # latest record per CVE instead of every change
 npm start | jq -r '"\(.changedAt) \(.op) \(.cveId)"'   # quick human view
 npm start -- --help
