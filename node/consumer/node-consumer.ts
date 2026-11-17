@@ -24,6 +24,7 @@ const { values: args } = parseArgs({
     topic: { type: "string", short: "t" },
     group: { type: "string", short: "g" },
     quiet: { type: "boolean", short: "q", default: false },
+    check: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
@@ -41,6 +42,7 @@ Options (each also settable via env):
   -g, --group <id>    consumer group; must start with "<username>."   CVEC_GROUP
                       (default: <username>.example)
   -q, --quiet         with --out: don't log each file written
+      --check         connect, authenticate, report what's available, and exit
 
 Connection (required):
   CVEC_BROKERS    host:port the cluster owner gave you, e.g. kafka.example.com:9092
@@ -109,7 +111,21 @@ async function writeRecord(dir: string, cveId: string, value: Change | null): Pr
   return `wrote ${path}`;
 }
 
+// --check: prove the address and credentials work without consuming anything.
+async function check(): Promise<void> {
+  const admin = kafka.admin();
+  await admin.connect();
+  const offsets = await admin.fetchTopicOffsets(topic);
+  const total = offsets.reduce((n, p) => n + Number(p.high) - Number(p.low), 0);
+  await admin.disconnect();
+  console.log(`OK: authenticated as ${username} at ${brokers.join(",")}; ${topic} has ${total} messages across ${offsets.length} partitions.`);
+}
+
 async function main(): Promise<void> {
+  if (args.check) {
+    await check();
+    process.exit(0);
+  }
   // Starting offsets: --since wins; otherwise resume the group (a new group
   // starts from the beginning of the topic).
   let seekTo: { partition: number; offset: string }[] | undefined;

@@ -8,6 +8,17 @@ Example clients for **cve-streams**: a Kafka-native feed of every CVE change.
 
 More languages to come.
 
+## Quickstart
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cve-community/cvec-examples/main/quickstart.sh | bash
+```
+
+It checks for git and Node.js 22.18+, downloads this repo to `~/cvec-examples`,
+asks for the address/username/password you were given (and tests them), asks
+whether you want the feed printed or written to one file per CVE, saves your
+settings and starts consuming. Re-run it any time; it remembers your answers.
+
 ## What you're consuming
 
 | Topic | Contents |
