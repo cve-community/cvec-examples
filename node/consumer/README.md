@@ -22,7 +22,19 @@ npm start -- --help
 
 Without `--since`, your consumer group remembers where you stopped: restart and it
 picks up from there (a brand-new group starts at the beginning). Groups must start
-with `<your username>.` — the default is `<username>.example`.
+with your namespace: `alice.` for key `alice.default`, `acme.` for key `acme.ci`.
+The default is `<username>.example`.
+
+Manage your groups (straight over Kafka, with your key):
+
+```sh
+npm start -- groups                                  # state, members, lag
+npm start -- groups reset alice.example --to 2026-11-01   # or --to beginning / end
+npm start -- groups delete alice.example
+```
+
+A reset needs the group to be idle: stop its consumers first (Ctrl-C leaves the
+group right away).
 
 Each stdout line looks like:
 

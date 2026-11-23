@@ -7,8 +7,11 @@
 #
 # Every question can be pre-answered with an environment variable (handy for a
 # shared link that already knows the address, or for scripted runs):
+#   CVEC_REGISTRAR registrar URL, for signing up with an invite code
+#   CVEC_INVITE    invite code (sign up instead of entering credentials)
+#   CVEC_EMAIL     your email (sign-up; used for password resets)
 #   CVEC_BROKERS   broker address, host:port
-#   CVEC_USERNAME  your username
+#   CVEC_USERNAME  your username (sign-up: the one you want)
 #   CVEC_PASSWORD  your password (prefer typing it when asked)
 #   CVEC_MODE      stdout | files
 #   CVEC_OUT       directory for files mode, relative to where you run this
@@ -100,7 +103,7 @@ the full CVE JSON. This walks you through reading it with a small Node script:
 
   1. check you have git and Node.js ${MIN_NODE}+
   2. download the example (${REPO})
-  3. ask how to connect (address, username, password) and test it
+  3. sign up with an invite code, or use credentials you were given; test them
   4. ask how you want the data (printed, or one file per CVE)
   5. save your settings and start it
 
@@ -142,10 +145,58 @@ fi
 
 # --- 3. connect ------------------------------------------------------------------
 step "3/5  Connecting"
-note "Whoever runs the cluster gave you an address (host:port), a username and a password."
-ask CVEC_BROKERS "Broker address (host:port):"
-ask CVEC_USERNAME "Username:"
-ask CVEC_PASSWORD "Password (typing is hidden):" "" secret
+if [ -z "${CVEC_INVITE:-}" ] && [ -z "${CVEC_USERNAME:-}" ]; then
+  say "You need either an invite code (to create your own account) or a username and"
+  say "password someone gave you."
+  choose CVEC_HAVE "Do you have an invite code or credentials?" invite invite credentials
+else
+  CVEC_HAVE=$([ -n "${CVEC_INVITE:-}" ] && echo invite || echo credentials)
+fi
+
+if [ "$CVEC_HAVE" = invite ]; then
+  note "Signing up creates your account plus a key for this machine. Your email is only"
+  note "used to confirm it's you and for password / key resets."
+  ask CVEC_REGISTRAR "Registrar URL (whoever invited you has it):"
+  CVEC_REGISTRAR=${CVEC_REGISTRAR%/}
+  ask CVEC_INVITE "Invite code:"
+  while :; do
+    ask CVEC_USERNAME "Pick a username (3-31: lowercase letters, digits, dashes):"
+    ask CVEC_EMAIL "Your email:"
+    body=$(CVEC_INVITE="$CVEC_INVITE" CVEC_USERNAME="$CVEC_USERNAME" CVEC_EMAIL="$CVEC_EMAIL" node -e \
+      'console.log(JSON.stringify({invite: process.env.CVEC_INVITE, username: process.env.CVEC_USERNAME, email: process.env.CVEC_EMAIL}))')
+    resp=$(curl -sS -w '\n%{http_code}' -X POST "$CVEC_REGISTRAR/v1/register" -H 'content-type: application/json' -d "$body") \
+      || die "Couldn't reach $CVEC_REGISTRAR. Check the URL with whoever invited you."
+    code=${resp##*$'\n'}; resp=${resp%$'\n'*}
+    field() { printf '%s' "$resp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=process.argv[1].split(".").reduce((o,k)=>o?.[k],JSON.parse(s));console.log(Array.isArray(v)?v.join(" "):v??"")})' "$1"; }
+    [ "$code" = 201 ] && break
+    msg=$(field error.message); errc=$(field error.code)
+    case "$errc" in
+      name_taken|name_reserved|bad_name) warn "$msg"; interactive || die "$msg"; CVEC_USERNAME= ;;
+      email_taken|bad_email) warn "$msg"; interactive || die "$msg"; CVEC_EMAIL= ;;
+      *) die "Sign-up failed: ${msg:-HTTP $code}" ;;
+    esac
+  done
+  CVEC_BROKERS=$(field kafka.brokers); CVEC_USERNAME=$(field kafka.username); CVEC_PASSWORD=$(field kafka.password)
+  ACCOUNT_USER=$(field account.username); ACCOUNT_PW=$(field account.password); INVITES=$(field invites)
+  ok "account $ACCOUNT_USER created; this machine's key is $CVEC_USERNAME"
+  umask 077
+  mkdir -p "$DIR"
+  {
+    echo "# cve-streams account (written by quickstart.sh; keep it private)"
+    echo "registrar=$CVEC_REGISTRAR"
+    echo "username=$ACCOUNT_USER"
+    echo "password=$ACCOUNT_PW"
+    echo "# Invite codes you can give to others (one person each):"
+    for c in $INVITES; do echo "invite=$c"; done
+  } > "$DIR/account.txt"
+  ok "account login + your invite codes saved to $DIR/account.txt"
+  note "Check your inbox for a confirmation link: confirming lets you reset passwords later."
+else
+  note "Whoever runs the cluster gave you an address (host:port), a username and a password."
+  ask CVEC_BROKERS "Broker address (host:port):"
+  ask CVEC_USERNAME "Username:"
+  ask CVEC_PASSWORD "Password (typing is hidden):" "" secret
+fi
 CVEC_SSL="${CVEC_SSL:-false}"
 # The script passes the start date itself (first run only); never via env.
 export -n CVEC_SINCE 2>/dev/null || true
