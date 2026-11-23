@@ -214,13 +214,28 @@ async function main(): Promise<void> {
     await admin.disconnect();
   }
 
-  const consumer = kafka.consumer({ groupId });
+  // A short session: if this process dies without leaving the group (killed,
+  // or stopped mid-join), the broker drops it within 15s instead of 30s.
+  const consumer = kafka.consumer({ groupId, sessionTimeout: 15000, heartbeatInterval: 3000 });
+  // Handle Ctrl-C / SIGTERM from the start: disconnecting leaves the group
+  // right away (a killed consumer stays a member until its session expires,
+  // which blocks resets of that group).
+  let count = 0;
+  let stopping = false;
+  const stop = async () => {
+    if (stopping) return;
+    stopping = true;
+    info(`stopping after ${count} messages`);
+    await consumer.disconnect().catch(() => {});
+    process.exit(0);
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
   await consumer.connect();
   await consumer.subscribe({ topic, fromBeginning: true });
   info(`connected to ${brokers.join(",")} as ${username}; topic ${topic}, group ${groupId}` +
     (since ? `, from ${since.toISOString()}` : "") + (outDir ? `, writing to ${outDir}` : ""));
 
-  let count = 0;
   await consumer.run({
     eachMessage: async ({ partition, message }) => {
       const key = message.key?.toString() ?? "";
@@ -242,14 +257,6 @@ async function main(): Promise<void> {
   });
 
   if (seekTo) for (const { partition, offset } of seekTo) consumer.seek({ topic, partition, offset });
-
-  const stop = async () => {
-    info(`stopping after ${count} messages`);
-    await consumer.disconnect();
-    process.exit(0);
-  };
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
 }
 
 main().catch((err) => {
